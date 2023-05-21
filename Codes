@@ -2,7 +2,7 @@ library(e1071)
 library(survival)
 library(dplyr)
 
-A.1
+A.1 LR_int function
 
 LR_int=function(y1,len1,l1){ # function to find the left and right end points that contain the event time, provided the event takes place
   if(y1>0 & y1<=l1){
@@ -13,8 +13,9 @@ LR_int=function(y1,len1,l1){ # function to find the left and right end points th
   }
   return(a)
 }
+
  
-A.2 Data generation
+A.2 Data generation function
 
 data.int = function(n,alpha,beta1,beta2,cens,setting){ 
 z1 = rnorm(n,mean=0,sd=1) # z1 and z2 are the two continuous covariates generated independently from standard normal distributions
@@ -78,7 +79,8 @@ if(setting==3){
 }
 
 
-A.3
+A.3 EM function
+
 em.svm <-function(TimeL,TimeR,TimL,TimR,Status,X,X1,Z,Z1,offsetvar,uncureprob,uncurepred,alpha,beta,emmax,eps,data,testdata)
   {     
     w <- Status	
@@ -231,7 +233,8 @@ em.svm <-function(TimeL,TimeR,TimL,TimR,Status,X,X1,Z,Z1,offsetvar,uncureprob,un
     em.svm <- list(latencyfit= c(alpha,beta),Uncureprob=uncureprob,Sp=Sp,S1=S1,Uncurepred=uncurepred,Sp.pred=Sp.pred,S1.pred=S1.pred,tau=convergence, Mod1=mod1, Mod2=mod2, Mod3=mod3, Mod4=mod4, Mod5=mod5)
   }
 
-A.4
+A.4 Smcure function
+
 smcure.Int <-function(formula,cureform,alpha.init,beta.init,offset=NULL,data,testdata,na.action=na.omit,Var1=T,emmax=500,eps=1e-3,nboot=100)
 {
 call <- match.call()
