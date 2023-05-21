@@ -1,1 +1,361 @@
+library(e1071)
+library(survival)
+library(dplyr)
+
+A.1
+
+LR_int=function(y1,len1,l1){ # function to find the left and right end points that contain the event time, provided the event takes place
+  if(y1>0 & y1<=l1){
+    a=c(.Machine$double.eps,l1)
+  }else{
+    k=as.integer((y1-l1)/len1)+1
+    a=c(l1+((k-1)*len1),l1+(k*len1))
+  }
+  return(a)
+}
+ 
+A.2 Data generation
+
+data.int = function(n,alpha,beta1,beta2,cens,setting){ 
+z1 = rnorm(n,mean=0,sd=1) # z1 and z2 are the two continuous covariates generated independently from standard normal distributions
+z2 = rnorm(n,mean=0,sd=1)
+
+piz = rep(NA,n) # this is the uncured probability pi(z)
+
+if(setting==1){
+piz = (exp(0.3-(5*z1)-(3*z2))/(1+exp(0.3-(5*z1)-(3*z2))))
+}
+
+if(setting==2){
+piz =  (exp(0.3+(10*z1*z1)-(5*z2*z2))/(1+exp(0.3+(10*z1*z1)-(5*z2*z2))))
+}
+
+if(setting==3){
+ piz = exp(-exp(0.3-(4*cos(z1))-(5*sin(z2))))
+ }
+ 
+ C = runif(n,0,cens) # censoring time 
+ U = runif(n,0,1)
+ L = rep(NA,n) # left end point 
+ R = rep(NA,n) # right end point
+ D = rep(NA,n) # censoring indicator
+ J = rep(NA,n) # cured indicator (J=0 implies cured)
+ Sp = rep(NA,n)
+ S1 = rep(NA,n)
+  
+ for(i in 1:n){
+ if(U[i]<= 1-piz[i]){
+    L[i] = C[i]
+    R[i] = 1/0
+    D[i] = 0
+    J[i] = 0
+    Sp[i] = (1-piz[i]) + (piz[i]*exp(-((L[i]/exp(-((beta1*z1[i])+(beta2*z2[i]))/alpha))^alpha)))
+    S1[i] =  (exp(-((L[i]/exp(-((beta1*z1[i])+(beta2*z2[i]))/alpha))^alpha)))
+    }else{
+       T1 =  rweibull(1,shape=alpha,scale= exp(-((beta1*z1[i])+(beta2*z2[i]))/alpha) )
+       J[i] = 1
+      if(min(T1,C[i])==C[i]){
+        D[i] = 0
+        L[i] = C[i]
+        R[i] = 1/0
+        Sp[i] = (1-piz[i]) + (piz[i]*exp(-((L[i]/exp(-((beta1*z1[i])+(beta2*z2[i]))/alpha))^alpha)))
+        S1[i] = (exp(-((L[i]/exp(-((beta1*z1[i])+(beta2*z2[i]))/alpha))^alpha)))
+      }else{
+        len=runif(1,0.2,0.7)
+        l=runif(1,0,1)
+        ans=LR_int(T1,len,l)
+        L[i]=ans[1]
+        R[i]=ans[2]
+        Sp[i] = (1-piz[i]) + (piz[i]*exp(-((((L[i]+R[i])/2)/exp(-((beta1*z1[i])+(beta2*z2[i]))/alpha))^alpha)))
+        S1[i] = (exp(-((((L[i]+R[i])/2)/exp(-((beta1*z1[i])+(beta2*z2[i]))/alpha))^alpha)))
+        D[i] = 1
+      }
+    }
+  }
+  
+  return(data.frame(L,R,D,z1,z2,J,uncure=piz,Sp=Sp,S1=S1))
+  
+}
+
+
+A.3
+em.svm <-function(TimeL,TimeR,TimL,TimR,Status,X,X1,Z,Z1,offsetvar,uncureprob,uncurepred,alpha,beta,emmax,eps,data,testdata)
+  {     
+    w <- Status	
+    n <- length(Status)
+    m <- dim(testdata)[1]
+    
+    convergence<- 1000;i <-1
+    while (convergence > eps & i < emmax){ 
+    H = drop((TimeL^alpha)*exp((beta)%*%t(X[,-1])))
+    survival<- exp(-H)
+
+## E step 
+     w <- Status+(1-Status)*(uncureprob*survival)/((1-uncureprob)+uncureprob*survival)
+      
+## M step
+      multipleuncureprob=matrix(1:5*n, nrow=n,ncol=5)
+      for (j in 1:n){multipleuncureprob[j,]<-rbinom(5,size = 1,prob=w[j])}
+      uncureprob1<-c(1,1)
+      uncureprob2<-c(1,1)
+      uncureprob3<-c(1,1)
+      uncureprob4<-c(1,1)
+      uncureprob5<-c(1,1)
+      for (j in 1:n){uncureprob1[j]=multipleuncureprob[j,1]}
+      for (j in 1:n){uncureprob2[j]=multipleuncureprob[j,2]}
+      for (j in 1:n){uncureprob3[j]=multipleuncureprob[j,3]}
+      for (j in 1:n){uncureprob4[j]=multipleuncureprob[j,4]}
+      for (j in 1:n){uncureprob5[j]=multipleuncureprob[j,5]}
+
+      for (j in 1:n){uncureprob1[j]=uncureprob1[j]*2-1}
+      for (j in 1:n){uncureprob2[j]=uncureprob2[j]*2-1}
+      for (j in 1:n){uncureprob3[j]=uncureprob3[j]*2-1}
+      for (j in 1:n){uncureprob4[j]=uncureprob4[j]*2-1}
+      for (j in 1:n){uncureprob5[j]=uncureprob5[j]*2-1}
+      
+      uncureprob1<-as.factor(uncureprob1)
+      uncureprob2<-as.factor(uncureprob2)
+      uncureprob3<-as.factor(uncureprob3)
+      uncureprob4<-as.factor(uncureprob4)
+      uncureprob5<-as.factor(uncureprob5)
+      update_cureb<-c(1,1)
+      update_pred<-c(1,1)
+    
+      obj<-tune(svm,uncureprob1~Z[,-1],kernel="radial", data=data,ranges=list(gamma=2^(-6:1),cost=2^(2:6)),tunecontrol=tune.control(sampling = "fix"))
+      bg<-obj$best.parameters[1]  
+      bc<-obj$best.parameters[2]      
+    
+      mod1<-svm(Z[,-1],uncureprob1,kernel="radial",gamma=bg[[1]],cost=bc[[1]], probability=TRUE)
+      pred1<-predict(mod1,Z[,-1],probability = TRUE)
+      cpred1<-predict(mod1,testdata[4:5],probability = TRUE)
+      proba1<-attr(pred1, "probabilities")
+      cproba1<-attr(cpred1, "probabilities")
+      update_cureb1<-c(1,1)
+      update_pred1<-c(1,1)
+      for (z in 1:n){update_cureb1[z]<-proba1[z,colnames(proba1)==1]}
+      for (k in 1:m){update_pred1[k]<-cproba1[k,colnames(cproba1)==1]}
+      uncureprob1<-as.numeric(as.character(uncureprob1))
+      
+      mod2<-svm(Z[,-1],uncureprob2,kernel="radial",gamma=bg[[1]],cost=bc[[1]],probability=TRUE)
+      pred2<-predict(mod2,Z[,-1],probability = TRUE)
+      cpred2<-predict(mod2,testdata[4:5],probability = TRUE)
+      proba2<-attr(pred2, "probabilities")
+      cproba2<-attr(cpred2, "probabilities")
+      update_cureb2<-c(1,1)
+      update_pred2<-c(1,1)
+      for (z in 1:n){update_cureb2[z]<-proba2[z,colnames(proba2)==1]}
+      for (k in 1:m){update_pred2[k]<-cproba2[k,colnames(cproba2)==1]}
+      uncureprob2<-as.numeric(as.character(uncureprob2))
+      
+      mod3<-svm(Z[,-1],uncureprob3,kernel="radial",gamma=bg[[1]],cost=bc[[1]],probability=TRUE)
+      pred3<-predict(mod3,Z[,-1],probability = TRUE)
+      cpred3<-predict(mod3,testdata[4:5],probability = TRUE)
+      proba3<-attr(pred3, "probabilities")
+      cproba3<-attr(cpred3, "probabilities")
+      update_cureb3<-c(1,1)
+      update_pred3<-c(1,1)
+      for (z in 1:n){update_cureb3[z]<-proba3[z,colnames(proba3)==1]}
+      for (k in 1:m){update_pred3[k]<-cproba3[k,colnames(cproba3)==1]}
+      uncureprob3<-as.numeric(as.character(uncureprob3))
+      
+      mod4<-svm(Z[,-1],uncureprob4,kernel="radial",gamma=bg[[1]],cost=bc[[1]],probability=TRUE)
+      pred4<-predict(mod4,Z[,-1],probability = TRUE)
+      cpred4<-predict(mod4,testdata[4:5],probability = TRUE)
+      proba4<-attr(pred4, "probabilities")
+      cproba4<-attr(cpred4, "probabilities")
+      update_cureb4<-c(1,1)
+      update_pred4<-c(1,1)
+      for (z in 1:n){update_cureb4[z]<-proba4[z,colnames(proba4)==1]}
+      for (k in 1:m){update_pred4[k]<-cproba4[k,colnames(cproba4)==1]}
+      uncureprob4<-as.numeric(as.character(uncureprob4))
+      
+      mod5<-svm(Z[,-1],uncureprob5,kernel="radial",gamma=bg[[1]],cost=bc[[1]],probability=TRUE)
+      pred5<-predict(mod5,Z[,-1],probability = TRUE)
+      cpred5<-predict(mod5,testdata[4:5],probability = TRUE)
+      proba5<-attr(pred5, "probabilities")
+      cproba5<-attr(cpred5, "probabilities")
+      update_cureb5<-c(1,1)
+      update_pred5<-c(1,1)
+      for (z in 1:n){update_cureb5[z]<-proba5[z,colnames(proba5)==1]}
+      for (k in 1:m){update_pred5[k]<-cproba5[k,colnames(cproba5)==1]}
+      uncureprob5<-as.numeric(as.character(uncureprob5))
+      
+      for (z in 1:n){update_cureb[z]<-(update_cureb1[z]+update_cureb2[z]+update_cureb3[z]+update_cureb4[z]+update_cureb5[z])/5}
+      for (k in 1:m){update_pred[k]<-(update_pred1[k]+update_pred2[k]+update_pred3[k]+update_pred4[k]+update_pred5[k])/5}
+      
+        # latency part
+       Q1 = function(par=c(alp,b1,b2)){
+            bb = c(par[2],par[3])
+            HL = drop((TimeL^par[1])*exp((bb)%*%t(X[,-1])))
+            HR = drop((TimeR^par[1])*exp((bb)%*%t(X[,-1])))
+            S.L = exp(-HL)
+            S.R = exp(-HR)
+            out = sum((1-Status)*w*log(S.L)) + sum(Status*log(S.L-S.R))
+            return(-out)
+       } 
+
+      update_latency = optim(par=c(alpha,beta[1],beta[2]),fn=Q1,method="Nelder-Mead")$par
+      
+      convergence<-sum(c(mean(update_cureb)-mean(uncureprob),update_latency-c(alpha,beta))^2)
+   
+      uncureprob <- update_cureb
+      uncurepred <- update_pred
+      alpha = update_latency[1]
+      beta <- c(update_latency[2],update_latency[3]) 
+ 
+      i <- i+1
+    }
+      TimeK = rep(NA,n)
+      for(k in 1:n){
+      if(TimeR[k]==Inf){
+      TimeK[k] = TimeL[k]
+      }else{
+      TimeK[k] = TimeR[k]
+      }
+      }
+      TimK = rep(NA,length(TimL))
+      for(d in 1:length(TimL)){
+        if(TimR[d]==Inf){
+          TimK[d] = TimL[d]
+        }else{
+          TimK[d] = TimR[d]
+        }
+      }
+      BB = drop((exp((beta)%*%t(X[,-1])))^(-1/alpha))
+      BB1 = drop((exp((beta)%*%t(X1[,-1])))^(-1/alpha))
+      Sp = (1-uncureprob)+(uncureprob*exp(-((((TimeL+TimeK)/2)/BB)^alpha)))
+      S1 = (exp(-((((TimeL+TimeK)/2)/BB)^alpha)))
+      Sp.pred = (1-uncurepred)+(uncurepred*exp(-((((TimL+TimK)/2)/BB1)^alpha)))
+      S1.pred = (exp(-((((TimL+TimK)/2)/BB1)^alpha)))
+
+    em.svm <- list(latencyfit= c(alpha,beta),Uncureprob=uncureprob,Sp=Sp,S1=S1,Uncurepred=uncurepred,Sp.pred=Sp.pred,S1.pred=S1.pred,tau=convergence, Mod1=mod1, Mod2=mod2, Mod3=mod3, Mod4=mod4, Mod5=mod5)
+  }
+
+A.4
+smcure.Int <-function(formula,cureform,alpha.init,beta.init,offset=NULL,data,testdata,na.action=na.omit,Var1=T,emmax=500,eps=1e-3,nboot=100)
+{
+call <- match.call()
+cat("Program is running..be patient...")
+
+## prepare data
+	data <- na.action(data)
+	testdata <- na.action(testdata)
+	n <- dim(data)[1]
+	m <- dim(testdata)[1]
+	mf <- model.frame(formula,data)
+	mp <- model.frame(formula,testdata)
+	cvars <- all.vars(cureform)
+	Z <- as.matrix(cbind(rep(1,n),data[,cvars]))
+	Z1 <- as.matrix(cbind(rep(1,m),testdata[,cvars]))
+	colnames(Z) <- c("(Intercept)",cvars)
+	colnames(Z1) <- c("(Intercept)",cvars)
+	if(!is.null(offset)) {
+	offsetvar <- all.vars(offset)
+	offsetvar<-data[,offsetvar]}
+	else offsetvar <- NULL
+	Y <- model.extract(mf,"response")
+	X <- model.matrix(attr(mf,"terms"), mf)
+	X1 <- model.matrix(attr(mp,"terms"), mp)
+	if (!inherits(Y, "Surv")) stop("Response must be a survival object")
+         TimeL = Y[,1]
+         TimeR = Y[,2]
+         Status = Y[,3]
+         
+         TimL = testdata[,1]
+         TimR = testdata[,2]
+	bnm <- colnames(Z)
+	nb <- ncol(Z)
+
+	betanm <- colnames(X)[-1]
+	nbeta <- ncol(X)-1
+
+## initial value 
+	w <- Status
+  nw<-c(1,1)
+	for(i in 1: n) {nw[i]= w[i]*2-1}
+	nw <- as.factor(nw)
+	obj<-tune(svm,nw~Z[,-1],kernel="radial", data=data,ranges=list(gamma=2^(-6:1),cost=2^(2:6)),tunecontrol=tune.control(sampling = "fix"))
+	bg<-obj$best.parameters[1]  
+	bc<-obj$best.parameters[2]
+	mod <- svm(Z[,-1],nw,kernel="radial",gamma=bg[[1]],cost=bc[[1]], probability=TRUE)
+	pred <- predict(mod,Z[,-1], probability = TRUE)
+	cpred <- predict(mod,testdata[4:5], probability = TRUE)
+	proba<-attr(pred, "probabilities")
+	cproba<-attr(cpred, "probabilities")
+	uncureprob<-c(1,1)
+	uncurepred<-c(1,1)
+	
+	for (i in 1:n){uncureprob[i]<-proba[i,colnames(proba)==1]}
+	for (d in 1:m){uncurepred[d]<-cproba[d,colnames(cproba)==1]}
+	nw<-as.numeric(as.character(nw))
+        
+	w <- as.factor(w)
+	
+ ## do EM algo
+	emfit <- em.svm(TimeL,TimeR,TimL,TimR,Status,X,X1,Z,Z1,offsetvar,uncureprob,uncurepred,alpha.init,beta.init,emmax,eps,data,testdata) # TimeL,TimeR,Status,X,Z,offsetvar,uncureprob,alpha,beta,emmax,eps,data
+
+    latency = emfit$latencyfit
+    alpha.est = latency[1]
+		beta.est <- c(latency[2],latency[3])
+		UN<-emfit$Uncureprob
+		MOD1<-emfit$Mod1
+		MOD2<-emfit$Mod2
+		MOD3<-emfit$Mod3
+		MOD4<-emfit$Mod4
+		MOD5<-emfit$Mod5
+    Sp = emfit$Sp
+    S1 = emfit$S1
+    PRED<-emfit$Uncurepred
+    Sp.pred = emfit$Sp.pred
+    S1.pred = emfit$S1.pred
+
+		if(Var1){
+		latency_boot<-matrix(rep(0,nboot*(nbeta+1)), nrow=nboot)
+		 iter <- matrix(rep(0,nboot),ncol=1)
+  
+		 tempdata <- cbind(TimeL,TimeR,Status,X,Z)
+		 data1<-subset(tempdata,Status==1);data0<-subset(tempdata,Status==0)
+		 n1<-nrow(data1);n0<-nrow(data0)  
+		 i<-1
+		 while (i<=nboot){
+     id1<-sample(1:n1,n1,replace=TRUE);id0<-sample(1:n0,n0,replace=TRUE)
+ 		bootdata<-rbind(data1[id1,],data0[id0,])
+		bootZ <- bootdata[,bnm]
+		bootX <- as.matrix(cbind(rep(1,n),bootdata[,betanm]))
+			
+			bootfit <- em.svm(bootdata[,1],bootdata[,2],bootdata[,3],bootX,bootZ,offsetvar,UN,PRED,alpha.est,beta.est,emmax,eps,data,testdata)
+		 	latency_boot[i,] <- bootfit$latencyfit
+		 	if (bootfit$tau<eps){
+		   	  i<-i+1}
+		  }#end of while
+
+		latency_var <- apply(latency_boot, 2, var)
+		latency_sd <- sqrt(latency_var)
+		}
+	fit<-list()
+	class(fit) <- c("smcure.Int")
+	fit$latency <- latency
+	if(Var1){
+	fit$latency_var <- latency_var
+	fit$latency_sd <- latency_sd
+	fit$latency_zvalue <- fit$latency/latency_sd
+	fit$latency_pvalue <- (1-pnorm(abs(fit$latency_zvalue)))*2	}
+	cat(" done.\n")
+	fit$call <- call
+	fit$bnm <- bnm
+	fit$betanm <- betanm
+	#fit$s <- s
+	#fit$Time <- Time
+	fit$UN<- UN
+  fit$Sp = Sp
+  fit$S1 = S1
+  fit$PRED<- PRED
+  fit$Sp.pred = Sp.pred
+  fit$S1.pred = S1.pred
+	finall<-fit$modee
+	final<- fit$UN
+	final2<- fit$PRED
+	fit
+	}
+
 
