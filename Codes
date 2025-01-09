@@ -81,11 +81,13 @@ if(setting==3){
 
 A.3 EM function
 
-em.svm <-function(TimeL,TimeR,TimL,TimR,Status,X,X1,Z,Z1,offsetvar,uncureprob,uncurepred,alpha,beta,emmax,eps,data,testdata)
+em.svm <-function(TimeL,TimeR,Status,X,X1,Z,Z1,offsetvar,uncureprob,alpha,beta,emmax,eps,data,testdata)
   {     
     w <- Status	
     n <- length(Status)
     m <- dim(testdata)[1]
+    TimL<-testdata$L
+    TimR<-testdata$R
     
     convergence<- 1000;i <-1
     while (convergence > eps & i < emmax){ 
@@ -263,9 +265,7 @@ cat("Program is running..be patient...")
          TimeL = Y[,1]
          TimeR = Y[,2]
          Status = Y[,3]
-         
-         TimL = testdata[,1]
-         TimR = testdata[,2]
+
 	bnm <- colnames(Z)
 	nb <- ncol(Z)
 
@@ -295,7 +295,7 @@ cat("Program is running..be patient...")
 	w <- as.factor(w)
 	
  ## do EM algo
-	emfit <- em.svm(TimeL,TimeR,TimL,TimR,Status,X,X1,Z,Z1,offsetvar,uncureprob,uncurepred,alpha.init,beta.init,emmax,eps,data,testdata) # TimeL,TimeR,Status,X,Z,offsetvar,uncureprob,alpha,beta,emmax,eps,data
+	emfit <- em.svm(TimeL,TimeR,Status,X,X1,Z,Z1,offsetvar,uncureprob,alpha.init,beta.init,emmax,eps,data,testdata) 
 
     latency = emfit$latencyfit
     alpha.est = latency[1]
@@ -326,7 +326,7 @@ cat("Program is running..be patient...")
 		bootZ <- bootdata[,bnm]
 		bootX <- as.matrix(cbind(rep(1,n),bootdata[,betanm]))
 			
-			bootfit <- em.svm(bootdata[,1],bootdata[,2],bootdata[,3],bootX,bootZ,offsetvar,UN,PRED,alpha.est,beta.est,emmax,eps,data,testdata)
+			bootfit <- em.svm(bootdata[,1],bootdata[,2],bootdata[,3],bootX,X1,bootZ,Z1,offsetvar,UN,alpha.est,beta.est,emmax,eps,data,testdata)
 		 	latency_boot[i,] <- bootfit$latencyfit
 		 	if (bootfit$tau<eps){
 		   	  i<-i+1}
